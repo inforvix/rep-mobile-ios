@@ -9,7 +9,12 @@ class DatabaseProvider {
   static Database? _database;
 
   static Future<Database?> get database async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    // sqflite só tem suporte nativo em Android e iOS; nas demais plataformas
+    // (web/desktop) o app segue sem banco local.
+    final bool suportaSqflite = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+    if (!suportaSqflite) {
       return null;
     }
 

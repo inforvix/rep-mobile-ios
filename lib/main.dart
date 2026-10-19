@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:rep_p_mobile/src/database/database_provider.dart';
@@ -7,11 +6,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:timezone/data/latest.dart' as tz;
 
 void main() async {
-  if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
-    WidgetsFlutterBinding.ensureInitialized();
-    await DatabaseProvider.database;
-    tz.initializeTimeZones();
-  }
+  WidgetsFlutterBinding.ensureInitialized();
+  // DatabaseProvider decide internamente em quais plataformas o banco existe.
+  await DatabaseProvider.database;
+  tz.initializeTimeZones();
 
   initializeDateFormatting('pt_BR', null).then((_) {
     runApp(const MyApp());

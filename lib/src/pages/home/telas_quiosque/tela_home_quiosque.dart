@@ -11,6 +11,7 @@ import 'package:rep_p_mobile/src/service/api_exception.dart';
 import 'package:rep_p_mobile/src/ui/cores.dart';
 import 'package:rep_p_mobile/src/ui/fonts.dart';
 import 'package:rep_p_mobile/src/ui/widgets/button.dart';
+import 'package:rep_p_mobile/src/ui/widgets/botao_sair.dart';
 import 'package:rep_p_mobile/src/ui/widgets/camera_dialog.dart';
 import 'package:rep_p_mobile/src/ui/widgets/comprovante.dart';
 import 'package:rep_p_mobile/src/ui/widgets/digital_clock.dart';
@@ -234,8 +235,11 @@ class _TelaRegistrarMarcacaoQuiosqueState
           ClipPath(
             clipper: OvalBottomBorderClipper2(),
             child: Container(
-              height: 300,
+              // Altura extra + padding: o fundo azul continua atrás da status
+              // bar, mas o conteúdo fica abaixo de hora/wifi/bateria.
+              height: 300 + MediaQuery.of(context).padding.top,
               width: double.infinity,
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
               decoration: BoxDecoration(
                 color: PaletaCores.backgroundBlue,
               ),
@@ -256,6 +260,11 @@ class _TelaRegistrarMarcacaoQuiosqueState
                       fit: BoxFit.contain,
                     ),
                   ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 16,
+                  child: BotaoSairInforvix(),
                 ),
                 Column(
                   children: [

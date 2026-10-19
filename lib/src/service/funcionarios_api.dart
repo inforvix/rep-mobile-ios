@@ -24,6 +24,10 @@ class FuncionarioApi {
                   responseBody['solicitaFoto'] ??
                   false) ==
               true;
+      // O endpoint de facial individual recebe o contrato da empresa
+      // (identificador da collection de rostos), devolvido aqui no login.
+      DadosGlobais.contratoEmpresa =
+          (responseBody['contrato'] ?? '').toString();
     } else {
       throw ApiException(ApiException.extrairMensagem(
           response.body, 'Falha ao fazer login (${response.statusCode})'));

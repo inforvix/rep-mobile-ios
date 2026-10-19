@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Exportações locais do Xcode Organizer (.ipa) — não versionar
+/Runner */

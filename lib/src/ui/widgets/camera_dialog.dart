@@ -41,7 +41,13 @@ class _CameraDialogState extends State<CameraDialog>
         orElse: () => cameras.first,
       );
 
-      _controller = CameraController(frontCamera, ResolutionPreset.medium);
+      // enableAudio: false — o app só captura foto; evita pedir permissão de
+      // microfone (obrigatória no iOS quando o áudio da câmera está ativo).
+      _controller = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
       _initializeControllerFuture = _controller!.initialize();
 
       await _initializeControllerFuture;

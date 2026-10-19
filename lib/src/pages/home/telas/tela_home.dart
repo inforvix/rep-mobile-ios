@@ -1,8 +1,10 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:rep_p_mobile/src/common/dados.dart';
@@ -11,6 +13,7 @@ import 'package:rep_p_mobile/src/repositories/marcacao.dart';
 import 'package:rep_p_mobile/src/service/api_exception.dart';
 import 'package:rep_p_mobile/src/ui/cores.dart';
 import 'package:rep_p_mobile/src/ui/widgets/button.dart';
+import 'package:rep_p_mobile/src/ui/widgets/botao_sair.dart';
 import 'package:rep_p_mobile/src/ui/widgets/camera_dialog.dart';
 import 'package:rep_p_mobile/src/ui/widgets/comprovante.dart';
 import 'package:rep_p_mobile/src/ui/widgets/digital_clock.dart';
@@ -46,7 +49,8 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
     );
   }
 
-  Future<void> _abrirCameraDialog(BuildContext context) async {
+  Future<void> _abrirCameraDialog(
+      BuildContext context, Position posicao) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -62,7 +66,7 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
             child: CameraDialog(
               onFotoCapturada: (foto) async {
                 Navigator.of(context).pop(); // Fecha o dialog
-                await _enviarFoto(foto); // Envia a foto
+                await _enviarFoto(foto, posicao); // Envia a foto
               },
             ),
           ),
@@ -71,15 +75,29 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
     );
   }
 
-  Future<void> _enviarFoto(File foto) async {
+  Future<void> _enviarFoto(File foto, Position posicao) async {
     setState(() => _enviando = true);
 
+    // O backend espera o CONTRATO da empresa nesse parâmetro (é o nome da
+    // collection de rostos). Enviar o CPF fazia a busca falhar sempre — por
+    // isso o facial só funcionava no modo quiosque, que usa o contrato vindo
+    // do token da empresa.
+    final String contrato = DadosGlobais.contratoEmpresa;
+    if (contrato.isEmpty) {
+      setState(() => _enviando = false);
+      _mostrarErro(
+          'Contrato da empresa não identificado. Faça login novamente.');
+      return;
+    }
+
     final String url =
-        '${DadosGlobais.baseUrl}/marcacao/facial/individual/${DadosGlobais.cpfLogin}';
+        '${DadosGlobais.baseUrl}/marcacao/facial/individual/$contrato';
 
     try {
       final formData = FormData.fromMap({
         'foto': await MultipartFile.fromFile(foto.path, filename: 'foto.jpg'),
+        'latitude': posicao.latitude.toString(),
+        'longitude': posicao.longitude.toString(),
       });
 
       final response = await Dio().post(url,
@@ -127,11 +145,42 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
     }
   }
 
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  // No iOS o sistema só exibe o pedido de permissão uma vez: depois de negado
+  // (ou com o serviço desligado) o único caminho é o app Ajustes.
+  Future<void> _sugerirAjustes(String mensagem) async {
+    if (!mounted) return;
+    final abrir = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Localização necessária'),
+        content: Text(mensagem),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Abrir Ajustes'),
+          ),
+        ],
+      ),
+    );
+    if (abrir == true) await Geolocator.openAppSettings();
+  }
+
   Future<Position?> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _mostrarErro('Serviço de localização está desativado.');
+        if (_isIOS) {
+          await _sugerirAjustes('Ative os Serviços de Localização em '
+              'Ajustes > Privacidade e Segurança para registrar o ponto.');
+        } else {
+          _mostrarErro('Serviço de localização está desativado.');
+        }
         return null;
       }
 
@@ -145,11 +194,40 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _mostrarErro('Permissão negada permanentemente.');
+        if (_isIOS) {
+          await _sugerirAjustes('Permita o acesso à localização em Ajustes > '
+              'Pontovix Colaborador > Localização para registrar o ponto.');
+        } else {
+          _mostrarErro('Permissão negada permanentemente.');
+        }
         return null;
       }
 
-      return await Geolocator.getCurrentPosition();
+      // iOS 14+: com "Localização Precisa" desligada as coordenadas podem
+      // errar por quilômetros. Pede a precisa só para esta marcação; se o
+      // usuário recusar, segue com a aproximada.
+      if (_isIOS &&
+          await Geolocator.getLocationAccuracy() ==
+              LocationAccuracyStatus.reduced) {
+        await Geolocator.requestTemporaryFullAccuracy(
+            purposeKey: 'MarcacaoPonto');
+      }
+
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 20),
+          ),
+        );
+      } on TimeoutException {
+        // Sem sinal de GPS a tempo (ambiente fechado): usa a última conhecida.
+        final ultima = await Geolocator.getLastKnownPosition();
+        if (ultima == null) {
+          _mostrarErro('Não foi possível obter a localização. Tente novamente.');
+        }
+        return ultima;
+      }
     } catch (e) {
       _mostrarErro('Erro ao obter localização.');
       return null;
@@ -157,22 +235,34 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
   }
 
   Future<void> _registrarMarcacao() async {
+    if (_enviando) return;
+
+    // Ponto facial usa a câmera em Android e iOS; na Web a marcação segue o
+    // fluxo padrão por localização. A localização é obtida antes de abrir a
+    // câmera para o pedido de permissão não aparecer por cima do diálogo.
     if (DadosGlobais.funcionarioBatePontoFacial && !kIsWeb) {
-      _abrirCameraDialog(context);
+      setState(() => _enviando = true);
+      final position = await _getCurrentLocation();
+      if (mounted) setState(() => _enviando = false);
+      if (position == null || !mounted) return;
+      _abrirCameraDialog(context, position);
       return;
     }
 
     double latitude = 0.0;
     double longitude = 0.0;
 
-    if (!kIsWeb) {
-      final position = await _getCurrentLocation();
-      if (position == null) return;
-      latitude = position.latitude;
-      longitude = position.longitude;
-    }
-
+    // Obter o GPS pode levar alguns segundos: mostra o carregamento e evita
+    // marcação duplicada por toques repetidos.
+    setState(() => _enviando = true);
     try {
+      if (!kIsWeb) {
+        final position = await _getCurrentLocation();
+        if (position == null) return;
+        latitude = position.latitude;
+        longitude = position.longitude;
+      }
+
       await MarcacaoRepository()
           .registrarMarcacao(latitude: latitude, longitude: longitude);
     } on ApiException catch (e) {
@@ -181,6 +271,8 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
     } catch (_) {
       _mostrarErro('Ocorreu um erro ao registrar marcação');
       return;
+    } finally {
+      if (mounted) setState(() => _enviando = false);
     }
 
     _mostrarSucesso('Marcação registrada com sucesso');
@@ -209,8 +301,11 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
           ClipPath(
             clipper: OvalBottomBorderClipper2(),
             child: Container(
-              height: 300,
+              // Altura extra + padding: o fundo azul continua atrás da status
+              // bar, mas o conteúdo fica abaixo de hora/wifi/bateria.
+              height: 300 + MediaQuery.of(context).padding.top,
               width: double.infinity,
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
               decoration: BoxDecoration(
                 color: PaletaCores.backgroundBlue,
               ),
@@ -231,6 +326,11 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
                       fit: BoxFit.contain,
                     ),
                   ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 16,
+                  child: BotaoSairInforvix(),
                 ),
                 Column(
                   children: [

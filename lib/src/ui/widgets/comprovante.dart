@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:inforvix_ux/inforvix_ux.dart';
 import 'package:rep_p_mobile/src/common/funcoes_globais.dart';
@@ -138,7 +140,11 @@ class _ComprovanteWidgetState extends State<ComprovanteWidget> {
       child: Card(
         elevation: 10,
         child: GestureDetector(
-          onTap: _abrirDialogJustificar,
+          // A justificativa usa /marcacao/observacao, rota ainda não
+          // publicada em produção; no iOS o comprovante fica só leitura.
+          onTap: (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS)
+              ? _abrirDialogJustificar
+              : null,
           child: Container(
             height: 90,
             decoration: BoxDecoration(
