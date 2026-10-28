@@ -196,7 +196,7 @@ class _TelaRegistrarMarcacaoState extends State<TelaRegistrarMarcacao> {
       if (permission == LocationPermission.deniedForever) {
         if (_isIOS) {
           await _sugerirAjustes('Permita o acesso à localização em Ajustes > '
-              'Pontovix Colaborador > Localização para registrar o ponto.');
+              'INFORVIX - Relogio de Ponto > Localização para registrar o ponto.');
         } else {
           _mostrarErro('Permissão negada permanentemente.');
         }
